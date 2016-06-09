@@ -1,4 +1,4 @@
-Google Map {Neighborhood Map Project} ver.2.0
+Google Map {Neighborhood Map Project} ver.3.0
 ===============================
 The **Google Map** project starts from a google map request to show the basic google map and gets from [Yelp API](https://www.yelp.com/developers/), [Wikipedia API](https://www.mediawiki.org/wiki/MediaWiki) and [YouTube API](https://developers.google.com/youtube/) informations to add markers to the map and a list of results on the left side panel. At the beginning some places are loaded by default.
 

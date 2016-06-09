@@ -76,18 +76,20 @@ window.initialize = function () {
 	// Create infowindow
 	infowindow = new google.maps.InfoWindow();
 	// var flag_obj = JSON.parse(localStorage["__amplify__flag_init"]);
-	// Request data at the beginning
 	var request = ['firenze','museum'];
-	// Get data from ajax call to yelp, youtube, wikipedia
-	getRequestedData(request);
-	// Initialize dataList
-	vm.dataList.removeAll();
-	vm.dataListStored().forEach( function(item) {
-		var data = new Data(item);
-		// Build marker
-		data.marker = makeMarker(data);
-		// Add new element to dataList
-		vm.dataList.push(data);
+	// Request data at the beginning
+	google.maps.event.addListenerOnce(map, 'tilesloaded', function(){
+		// Get data from ajax call to yelp, youtube, wikipedia
+		getRequestedData(request);
+		// Initialize dataList
+		vm.dataList.removeAll();
+		vm.dataListStored().forEach( function(item) {
+			var data = new Data(item);
+			// Build marker
+			data.marker = makeMarker(data);
+			// Add new element to dataList
+			vm.dataList.push(data);
+		});
 	});
 };
 
@@ -220,21 +222,21 @@ var Data = function(data) {
 	var self = this;
 	self.id = ko.observable(data.id);
 	self.name = ko.observable(data.name);
-	self.imageUrl = ko.observable(data.imageUrl);
-	self.url = ko.observable((isMobile.any())?data.mobileUrl:data.url);
-	self.displayPhone = ko.observable(data.displayPhone);
-	self.reviewCount = ko.observable(data.reviewCount);
+	self.imageUrl = ko.observable(data.image_url);
+	self.url = ko.observable((isMobile.any())?data.mobile_url:data.url);
+	self.displayPhone = ko.observable(data.display_phone);
+	self.reviewCount = ko.observable(data.review_count);
 	self.categories = ko.observableArray(data.categories);
 	self.rating = ko.observable(data.rating);
-	self.ratingImgUrlSmall = ko.observable(data.ratingImgUrlSmall);
-	self.snippetText = ko.observable(data.snippetText);
-	self.locationCity = ko.observable(data.locationCity);
+	self.ratingImgUrlSmall = ko.observable(data.rating_img_url_small);
+	self.snippetText = ko.observable(data.snippet_text);
+	self.locationCity = ko.observable(data.location.city);
 	var strAddress = "";
-	for(var i=0; i<data.locationDisplayAddress.length-1; i++)
-		strAddress += data.locationDisplayAddress[i] +", ";
+	for(var i=0; i<data.location.display_address.length-1; i++)
+		strAddress += data.location.display_address[i] +", ";
 	strAddress += self.locationCity();
 	self.locationDisplayAddress = ko.observable(strAddress);
-	self.locationCoordinate = ko.observable(data.locationCoordinate);
+	self.locationCoordinate = ko.observable(data.location.coordinate);
 	self.videoId = ko.observable(data.videoId);
 	self.title = ko.observable(data.title);
 	self.wikiUrl = ko.observable(data.wikiUrl);
@@ -279,9 +281,9 @@ var viewModel = function() {
 		// If there isn't any matches
 		if(!match) {
 			// Add wikipedia and youtube data
-			item.videoId = youtubeData[Math.floor((Math.random() * youtubeData.length))].videoId;
-			item.title = wikiData.title;
-			item.wikiUrl = wikiData.url;
+			item.videoId = youtubeData[Math.floor((Math.random() * youtubeData.length))].id.videoId;
+			item.title = wikiData[1][0];
+			item.wikiUrl = wikiData[3][0];
 			// Create new data element
 			var data = new Data(item);
 			// Build marker
@@ -292,7 +294,7 @@ var viewModel = function() {
 			self.dataListStored.push(item);
 		}
 	};
-	// Get data (yotube/yelp/wikipedia) after pressing enter
+	// Get data (youtube/yelp/wikipedia) after pressing enter
 	self.searchItems = function(data, event){
 		if(event.keyCode === 13) { // Enter key code
 			// Split result
@@ -382,8 +384,7 @@ function errorMessageBuild(tag, msg) {
 
 // Jquery get request of wikipedia data
 // wikiLocation: term to search
-// callback: callback to return result object
-function wikiRequestData(wikiLocation, callback) {
+function wikiRequestData(wikiLocation) {
 	// Set the parameters request
 	var message = {
 		'action': 'https://'+((language[0]!==undefined)?language[0]:'en')+'.wikipedia.org/w/api.php',
@@ -396,18 +397,7 @@ function wikiRequestData(wikiLocation, callback) {
 		url: message.action + message.parameters,
 		dataType: "jsonp",
 		jsonp: "callback"
-	}).done(function(data) { // Done function
-			var wikiData;
-			if(data !== undefined) {
-				wikiData = {
-					'title': data[1][0],
-					'description': data[2][0],
-					'url': data[3][0]
-				};
-			} else console.log("Failed to get wikipedia resources.");
-			callback(wikiData); // Pass wikipedia data
-		}).fail(function(jqXHR, textStatus) { // Fail function
-			// console.log("Failed to get wikipedia resources. Error: " + jqXHR.status + ".");
+	}).fail(function(jqXHR, textStatus) { // Fail function
 			clearTimeout(errorTimeout);
 			errorMessageBuild(".site-wrap", 'Wikipedia Not Available or Wrong Request');
 			errorTimeout = setTimeout(function () {
@@ -421,8 +411,7 @@ function wikiRequestData(wikiLocation, callback) {
 // Jquery get request of yelp data
 // yelpCity: city to search
 // yelpBusiness: business to search
-// callback: callback to return result object
-function yelpRequestData(yelpCity, yelpBusiness, callback) {
+function yelpRequestData(yelpCity, yelpBusiness) {
 	// Set the parameters request
 	var auth = {
 		// Update with auth tokens
@@ -468,42 +457,7 @@ function yelpRequestData(yelpCity, yelpBusiness, callback) {
 		cache: true,
 		dataType: 'jsonp',
 		jsonpCallback: 'cb'
-		}).done(function(data) { // Done function
-			var res = data.businesses;
-			var yelpData = [];
-			if(res.length > 0) {
-				for(var i=0; i<res.length; i++) {
-					if(!res[i].is_closed) {
-						yelpData[i] = {
-							'id': res[i].id,
-							'name': res[i].name,
-							'imageUrl': res[i].image_url,
-							'url': res[i].url,
-							'mobileUrl': res[i].mobile_url,
-							'phone': res[i].phone,
-							'displayPhone': res[i].display_phone,
-							'reviewCount': res[i].review_count,
-							'categories': res[i].categories,
-							'rating': res[i].rating,
-							'ratingImgUrl': res[i].rating_img_url,
-							'ratingImgUrlSmall': res[i].rating_img_url_small,
-							'ratingImgUrlLarge': res[i].rating_img_url_large,
-							'snippetText': res[i].snippet_text,
-							'snippetImageUrl': res[i].snippet_image_url,
-							'locationAddress': res[i].location.address,
-							'locationDisplayAddress': res[i].location.display_address,
-							'locationCity': res[i].location.city,
-							'locationStateCode': res[i].location.state_code,
-							'locationPostalCode': res[i].location.postal_code,
-							'locationCountryCode': res[i].location.country_code,
-							'locationCoordinate': res[i].location.coordinate
-						};
-					}
-				}
-			} else console.log("Failed to get yelp resources.");
-			callback(yelpData); // Pass yelp data
 		}).fail(function(jqXHR, textStatus) { // Fail function
-			// console.log("Failed to get yelp resources. Error: " + jqXHR.status + ".");
 			clearTimeout(errorTimeout);
 			errorMessageBuild(".site-wrap", 'Yelp Not Available or Wrong Request');
 			errorTimeout = setTimeout(function () {
@@ -516,8 +470,7 @@ function yelpRequestData(yelpCity, yelpBusiness, callback) {
 
 // Jquery get request of youtube data
 // youtubeKey: term to search
-// callback: callback to return result object
-function youtubeRequestData(youtubeKey, callback) {
+function youtubeRequestData(youtubeKey) {
 	// Set the parameters request
 	var message = {
 		'action': 'https://www.googleapis.com/youtube/v3/search',
@@ -540,26 +493,8 @@ function youtubeRequestData(youtubeKey, callback) {
 		}, {maxResults:50}),
 		type: message.method,
 		dataType: 'jsonp',
-		jsonpCallback: 'cb',
 		url: message.action
-		}).done(function(data) { // Done function
-			var res = data.items;
-			var youtubeData = [];
-			if(res.length > 0) {
-				for(var i=0; i<res.length; i++) {
-					youtubeData[i] = {
-						'videoId': res[i].id.videoId,
-						'publishedAt': res[i].snippet.publishedAt,
-						'channelId': res[i].snippet.channelId,
-						'title': res[i].snippet.title,
-						'description': res[i].snippet.description,
-						'thumbnails': res[i].snippet.thumbnails
-					};
-				}
-			} else console.log("Failed to get youtube resources.");
-			callback(youtubeData); // Pass youtube data
 		}).fail(function(jqXHR, textStatus) { // Fail function
-			// console.log("Failed to get youtube resources. Error: " + jqXHR.status + ".");
 			clearTimeout(errorTimeout);
 			errorMessageBuild(".site-wrap", 'Youtube Not Available or Wrong Request');
 			errorTimeout = setTimeout(function () {
@@ -570,36 +505,21 @@ function youtubeRequestData(youtubeKey, callback) {
 		});
 }
 
-// Get data (yotube/yelp/wikipedia)
+// Get data (youtube/yelp/wikipedia)
 // request: request array
 function getRequestedData(request) {
-	var yelpData;
-	var youtubeData;
-	var wikiData;
-	// Waiting the results yelp, wikipedia, youtube
-	$.when (
-		yelpRequestData(request[0], request[1], function (data) {
-			yelpData = data;
-	}))
-	.then (
-		wikiRequestData(request[0], function (data) {
-			wikiData = data;
-	}))
-	.then (
-		youtubeRequestData(((request[1]!==undefined)?(request[0]+" "+request[1]):request[0]), function (data) {
-			youtubeData = data;
-	}))
-	.always (function() { // Execute anyway even in failure case
-		if(yelpData.length > 0) {
-			// Data from yelp
-			yelpData.forEach(function(data) {
+	// Waiting for data from yelp, youtube, wikipedia
+	$.when (yelpRequestData(request[0], request[1]), youtubeRequestData(((request[1]!==undefined)?(request[0]+" "+request[1]):request[0])), wikiRequestData(request[0]))
+	.done (function(yelpData, youtubeData, wikiData) {
+		if(yelpData[0].businesses.length > 0) {
+			// Add data from yelp, youtube, wikipedia
+			yelpData[0].businesses.forEach(function(data) {
 				// Add new data to model
-				vm.addItem(data, wikiData, youtubeData);
+				vm.addItem(data, wikiData[0], youtubeData[0].items);
 			});
 		}
 	})
 	.fail(function(){ // Failure case
-		// console.log("Failed to get resources.");
 		clearTimeout(errorTimeout);
 		errorMessageBuild(".site-wrap", 'Service Not Available');
 		errorTimeout = setTimeout(function () {
