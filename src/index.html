@@ -24,9 +24,11 @@
 	<aside>
 		<div class="side-nav-item" data-bind="css: toggleClass">
 			<form>
-				<input type="text" name="search" placeholder="Search..." data-bind="textInput : keyword,
-				event: {keypress: searchItems}">
-				<input type="text" name="filter" placeholder="Filter..." data-bind="value: filter, valueUpdate: 'afterkeydown'">
+				<input type="text" id="pac-input" name="search" placeholder="Search..." data-bind="textInput: keyword,	event: {keypress: searchItems}">
+				<div class="select-element">
+					<select data-bind="options: keywordList, value: selectKey"></select>
+				</div>
+				<input type="text" name="filter" placeholder="Filter..." data-bind="textInput: filter">
 			</form>
 		<div id="list-items" data-bind="foreach: filteredItems">
 		<div class="list-item container-box" data-bind="attr: { id: id }, click: $parent.openMarker(id), event: { mouseover: $parent.mouseOver(id), mouseout: $parent.mouseOut(id) }">
@@ -57,8 +59,14 @@
 	<script src="js/sha1.min.js"></script>
 	<script src='js/app.js'></script>
 	<script>
-		document.body.appendChild(document.createElement('script')).src='https://maps.googleapis.com/maps/api/js?key=AIzaSyClnw1QfEqQePv2n_DgTIp5Wu1h6b2zXKg&signed_in=true&callback=initialize&language='+((language[0]!==undefined)?language[0]:"en")+"&region="+((language[1]!==undefined)?language[1]:"US");
+	function googleError() {
+		errorMessageBuild(".site-wrap", 'Google Map Not Available');
+	}
+	var s = document.createElement('script');
+	s.src='https://maps.googleapis.com/maps/api/js?key=AIzaSyClnw1QfEqQePv2n_DgTIp5Wu1h6b2zXKg&signed_in=true&libraries=places&callback=initialize&language='+'language=' + (language[0] || "en") + '&region=' + (language[1] || "US");
+	s.async = true;
+	s.onerror = googleError;
+	document.body.appendChild(s);
 	</script>
-	<script src="" async defer></script>
 </body>
 </html>

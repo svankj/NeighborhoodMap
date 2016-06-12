@@ -6,6 +6,7 @@ var iconMarker, // Marker icon
 	iconMarkerLarge; // Large marker icon
 var infowindow; // Infowindow
 var errorTimeout; // Set timeout error
+var autocomplete; // Google autocomplete
 
 // Browser language
 var languages = navigator.languages?navigator.languages[0]:(navigator.language || navigator.userLanguage);
@@ -36,9 +37,19 @@ var isMobile = {
 
 // Google Map initialize
 window.initialize = function () {
+	// Set initial coordinates
+	var storageObj = JSON.parse(localStorage["__amplify__data_list_stored"]);
+	var latitude = 43.7684288;
+	var longitude = 11.2555704;
+	if(storageObj.data[0] !== undefined &&
+		storageObj.data[0].location !== undefined &&
+		storageObj.data[0].location.coordinate !== undefined) {
+		latitude = storageObj.data[0].location.coordinate.latitude;
+		longitude = storageObj.data[0].location.coordinate.longitude;
+	}
 	// Create map
 	map = new google.maps.Map(document.getElementsByClassName('map')[0], {
-		center: {lat: 43.7684288, lng: 11.2555704},
+		center: {lat: latitude, lng: longitude},
 		zoom: 14,
 		mapTypeControl: true,
 		mapTypeControlOptions: {
@@ -57,6 +68,12 @@ window.initialize = function () {
 		google.maps.event.trigger(map, "resize");
 		map.setCenter(center);
 	});
+	// Google autocomplete
+	var input = document.getElementById('pac-input');
+	var option = {
+		types: ['(cities)']
+	};
+	autocomplete = new google.maps.places.Autocomplete(input, option);
 	// Create marker customize icon
 	iconMarker = new google.maps.MarkerImage(
 		'../img/marker-icon.png',
@@ -75,12 +92,12 @@ window.initialize = function () {
 	);
 	// Create infowindow
 	infowindow = new google.maps.InfoWindow();
-	// var flag_obj = JSON.parse(localStorage["__amplify__flag_init"]);
-	var request = ['firenze','museum'];
+	var request = 'firenze';
 	// Request data at the beginning
 	google.maps.event.addListenerOnce(map, 'tilesloaded', function(){
 		// Get data from ajax call to yelp, youtube, wikipedia
-		getRequestedData(request);
+		if(storageObj.data !== undefined &&
+			storageObj.data.length < 2) getRequestedData(request);
 		// Initialize dataList
 		vm.dataList.removeAll();
 		vm.dataListStored().forEach( function(item) {
@@ -88,7 +105,7 @@ window.initialize = function () {
 			// Build marker
 			data.marker = makeMarker(data);
 			// Add new element to dataList
-			vm.dataList.push(data);
+			vm.dataList.unshift(data);
 		});
 	});
 };
@@ -102,7 +119,6 @@ function placeMarkerAndPanTo(latLng, id, infoHTML) {
 	var marker = new google.maps.Marker({
 		position: latLng,
 		map: map,
-		animation: google.maps.Animation.DROP,
 		icon: iconMarker
 	});
 	// Add marker identifier
@@ -153,8 +169,8 @@ function makeMarker(data) {
 		'<div class="info-box-right">'+
 		data.name()+'<br>'+
 		'<span class="text-rate">'+data.rating()+' </span><img src="'+data.ratingImgUrlSmall()+'" width="50" hiegth="10"><br>'+
-		((data.wikiUrl() !== undefined)?('<a href="'+data.wikiUrl()+'">wiki#'+data.title()+'</a><br>'):'')+
-		((data.videoId() !== undefined)?('<a href="https://www.youtube.com/watch?v='+data.videoId()+'">youtube:pick</a>'):'')+
+		((data.wikiUrl() !== undefined)?('Wikipedia: <a target="_blank" href="'+data.wikiUrl()+'">'+data.title()+'</a><br>'):'')+
+		((data.videoId() !== undefined)?('Youtube: <a target="_blank" href="https://www.youtube.com/watch?v='+data.videoId()+'">'+data.videoTitle()+'</a>'):'')+
 		'</div>'+
 		'</div>';
 	// Add markers to the map
@@ -238,6 +254,7 @@ var Data = function(data) {
 	self.locationDisplayAddress = ko.observable(strAddress);
 	self.locationCoordinate = ko.observable(data.location.coordinate);
 	self.videoId = ko.observable(data.videoId);
+	self.videoTitle = ko.observable(data.videoTitle);
 	self.title = ko.observable(data.title);
 	self.wikiUrl = ko.observable(data.wikiUrl);
 };
@@ -259,16 +276,21 @@ var viewModel = function() {
 	if(self.toggleClass === undefined) self.toggleClass("");
 	// Help observable
 	self.helpText = ko.observable();
-	self.helpText = '<p><font color="red"><b>--REAMD.md for usage--</b><br></font>'+
-					'<b>How to use the Search:</b><br>'+
-					'e.g. los angeles<br>'+
-					'e.g. paris, restaurant<br>'+
-					'<b>How to use the Filter:<br></b>'+
+	self.helpText = '<p><font color="red"><b>How to use the Search:</b><br></font>'+
+					'Insert a city name and select from google autocomplete the matching one.<br>'+
+					'Optional select before the search a place type.<br>'+
+					'<font color="red"><b>How to use the Filter:<br></b></font>'+
 					'Insert the name to filter.<br>'+
 					'(<font size="1"><a href="https://www.yelp.com/">Yelp</a><sup>©</sup>, '+
 					'<a href="https://www.wikipedia.org/">Wikipedia</a><sup>©</sup>, '+
 					'<a href="https://www.youtube.com/">Youtube</a><sup>©</sup></font>)'+
 					'</p>';
+	// Select options observable
+	self.keywordList = ko.observableArray(['All','Bank','Bar','Book Store','Cafe',
+		'Church','Hospital','Library','Movie Theater','Museum','Night Club',
+		'Restaurant','School','Shopping Mall','Store']);
+	// Select value observable
+	self.selectKey = ko.observable("All");
 	// Add new item to Knockout model
 	// item: yelp data
 	// wikiData: wikipedia data
@@ -281,27 +303,44 @@ var viewModel = function() {
 		// If there isn't any matches
 		if(!match) {
 			// Add wikipedia and youtube data
-			item.videoId = youtubeData[Math.floor((Math.random() * youtubeData.length))].id.videoId;
-			item.title = wikiData[1][0];
-			item.wikiUrl = wikiData[3][0];
+			if(youtubeData !== undefined) {
+				var idx = Math.floor((Math.random() * youtubeData.length));
+				item.videoId = youtubeData[idx].id.videoId;
+				item.videoTitle = youtubeData[idx].snippet.title;
+			}
+			else {
+				item.videoId = undefined;
+				item.videoTitle = undefined;
+			}
+			if(wikiData !== undefined) {
+				item.title = wikiData[1][0];
+				item.wikiUrl = wikiData[3][0];
+			}
+			else {
+				item.title = undefined;
+				item.wikiUrl = undefined;
+			}
 			// Create new data element
 			var data = new Data(item);
 			// Build marker
 			data.marker = makeMarker(data);
 			// Add element to observable dataList
-			self.dataList.push(data);
+			self.dataList.unshift(data);
 			// Add element to observable dataListStored
-			self.dataListStored.push(item);
+			self.dataListStored.unshift(item);
 		}
 	};
-	// Get data (youtube/yelp/wikipedia) after pressing enter
+	// Get data (youtube/yelp/wikipedia) after select city name
 	self.searchItems = function(data, event){
-		if(event.keyCode === 13) { // Enter key code
-			// Split result
-			var request = self.keyword().split(',');
-			if(self.keyword().trim() !== "" && self.keyword() !== undefined)
+		autocomplete.addListener('place_changed', function() {
+		var request;
+		if(autocomplete.getPlace() !== undefined)
+			if(autocomplete.getPlace().name !== undefined) {
+				request = autocomplete.getPlace().vicinity;
 				getRequestedData(request);
-		}
+				self.keyword("");
+			}
+		});
 		return true;
 	};
 	// Filter the list elements using the filter text
@@ -312,8 +351,9 @@ var viewModel = function() {
 			return self.dataList();
 		} else {
 			return ko.utils.arrayFilter(self.dataList(), function(data) {
+				var city = (data.locationCity() !== undefined)?data.locationCity().toLowerCase():"";
 				var filterValue = stringStartsWith(data.name().toLowerCase(), filter) ||
-				stringStartsWith(data.locationCity().toLowerCase(), filter);
+				stringStartsWith(city, filter);
 				var marker = data.marker;
 				if(filterValue)
 					marker.setVisible(true);
@@ -379,6 +419,7 @@ function errorMessageBuild(tag, msg) {
 	$('.error-msg').remove();
 	$('.header-item').hide();
 	$('body').css('overflow-y', 'hidden');
+	if(vm.toggleClass() === "open") vm.toggleClass("");
 	$(tag).prepend('<div class="error error-msg">'+msg+'</div>');
 }
 
@@ -397,21 +438,13 @@ function wikiRequestData(wikiLocation) {
 		url: message.action + message.parameters,
 		dataType: "jsonp",
 		jsonp: "callback"
-	}).fail(function(jqXHR, textStatus) { // Fail function
-			clearTimeout(errorTimeout);
-			errorMessageBuild(".site-wrap", 'Wikipedia Not Available or Wrong Request');
-			errorTimeout = setTimeout(function () {
-				$('.header-item').show();
-				$('body').css('overflow-y', 'visible');
-				$('.error-msg').remove();
-			}, 5000);
 	});
 }
 
 // Jquery get request of yelp data
 // yelpCity: city to search
-// yelpBusiness: business to search
-function yelpRequestData(yelpCity, yelpBusiness) {
+// placeTypes: optional place types
+function yelpRequestData(yelpCity, placeTypes) {
 	// Set the parameters request
 	var auth = {
 		// Update with auth tokens
@@ -422,7 +455,7 @@ function yelpRequestData(yelpCity, yelpBusiness) {
 		serviceProvider: { signatureMethod: "HMAC-SHA1"	}
 	};
 	// Set the parameters request
-	var term = yelpBusiness;
+	var term = placeTypes;
 	var location = yelpCity;
 	var accessor = {
 		consumerSecret: auth.consumerSecret,
@@ -430,7 +463,7 @@ function yelpRequestData(yelpCity, yelpBusiness) {
 	};
 	// Set the parameters request
 	var parameters = [];
-	if(yelpBusiness !== undefined) parameters.push(['term', term]);
+	if(placeTypes !== "") parameters.push(['term', term]);
 	parameters.push(['location', location]);
 	parameters.push(['sort', '2']);
 	parameters.push(['callback', 'cb']);
@@ -455,17 +488,16 @@ function yelpRequestData(yelpCity, yelpBusiness) {
 		url: message.action,
 		data: parameterMap,
 		cache: true,
-		dataType: 'jsonp',
-		jsonpCallback: 'cb'
-		}).fail(function(jqXHR, textStatus) { // Fail function
-			clearTimeout(errorTimeout);
-			errorMessageBuild(".site-wrap", 'Yelp Not Available or Wrong Request');
-			errorTimeout = setTimeout(function () {
-				$('.header-item').show();
-				$('body').css('overflow-y', 'visible');
-				$('.error-msg').remove();
-			}, 5000);
-		});
+		dataType: 'jsonp'
+	}).fail(function(jqXHR, textStatus) { // Fail function
+		clearTimeout(errorTimeout);
+		errorMessageBuild(".site-wrap", 'Yelp Not Available or Wrong Request');
+		errorTimeout = setTimeout(function () {
+			$('.header-item').show();
+			$('body').css('overflow-y', 'visible');
+			$('.error-msg').remove();
+		}, 5000);
+	});
 }
 
 // Jquery get request of youtube data
@@ -482,7 +514,7 @@ function youtubeRequestData(youtubeKey) {
 		data: $.extend({
 			// Update with api key
 			key: '', // <--------------------HERE THE YOUTUBE API KEY
-			q: youtubeKey,
+			q: youtubeKey.trim(),
 			part: 'snippet',
 			type: 'video',
 			safeSearch: 'strict',
@@ -494,38 +526,40 @@ function youtubeRequestData(youtubeKey) {
 		type: message.method,
 		dataType: 'jsonp',
 		url: message.action
-		}).fail(function(jqXHR, textStatus) { // Fail function
-			clearTimeout(errorTimeout);
-			errorMessageBuild(".site-wrap", 'Youtube Not Available or Wrong Request');
-			errorTimeout = setTimeout(function () {
-				$('.header-item').show();
-				$('body').css('overflow-y', 'visible');
-				$('.error-msg').remove();
-			}, 5000);
-		});
+	});
 }
 
 // Get data (youtube/yelp/wikipedia)
 // request: request array
 function getRequestedData(request) {
 	// Waiting for data from yelp, youtube, wikipedia
-	$.when (yelpRequestData(request[0], request[1]), youtubeRequestData(((request[1]!==undefined)?(request[0]+" "+request[1]):request[0])), wikiRequestData(request[0]))
-	.done (function(yelpData, youtubeData, wikiData) {
-		if(yelpData[0].businesses.length > 0) {
-			// Add data from yelp, youtube, wikipedia
-			yelpData[0].businesses.forEach(function(data) {
-				// Add new data to model
-				vm.addItem(data, wikiData[0], youtubeData[0].items);
-			});
+	var yelpErr, youtubeErr, wikiErr;
+	var placeTypes = (vm.selectKey()==='All')?"":vm.selectKey();
+	$.when(yelpErr=yelpRequestData(request, placeTypes))
+	.then(youtubeErr=youtubeRequestData(request+" "+placeTypes))
+	.then(wikiErr=wikiRequestData(request))
+	.always(function(yelpData) {
+		if(yelpErr.statusText !== 'error') {
+			var youtubeData = (youtubeErr.statusText !== 'error' &&
+				youtubeErr.responseJSON !== undefined)?youtubeErr.responseJSON.items:undefined;
+			var wikiData = (wikiErr.statusText !== 'error' &&
+				wikiErr.responseJSON !== undefined)?wikiErr.responseJSON:undefined;
+			if(yelpData.businesses!== undefined && yelpData.businesses.length > 0) {
+				// Remove old data if there is
+				if(vm.dataList() !== undefined && vm.dataList().length > 0){
+					vm.dataListStored([]);
+					vm.dataList([]);
+					for (var i = 0; i < markers.length; i++) {
+						markers[i].setMap(null);
+					}
+					markers = [];
+				}
+				// Add new data
+				yelpData.businesses.forEach(function(data) {
+					// Add new data to model
+					vm.addItem(data, wikiData, youtubeData);
+				});
+			}
 		}
 	})
-	.fail(function(){ // Failure case
-		clearTimeout(errorTimeout);
-		errorMessageBuild(".site-wrap", 'Service Not Available');
-		errorTimeout = setTimeout(function () {
-			$('.header-item').show();
-			$('body').css('overflow-y', 'visible');
-			$('.error-msg').remove();
-		}, 5000);
-	});
 }

@@ -2,7 +2,6 @@ module.exports = function(grunt) {
   var mozjpeg = require('imagemin-mozjpeg');
   require('load-grunt-tasks')(grunt);
 
-  grunt.loadNpmTasks('grunt-autoprefixer');
   grunt.loadNpmTasks('grunt-contrib-imagemin');
   grunt.loadNpmTasks('grunt-contrib-cssmin');
   grunt.loadNpmTasks('grunt-responsive-images');
@@ -233,5 +232,5 @@ module.exports = function(grunt) {
     		}
   	}
   }); // end grunt.initConfig
-  grunt.registerTask('default', ['autoprefixer', 'imagemin', 'cssmin', 'responsive_images', 'resize_crop', 'svgmin', 'jsbeautifier', 'jshint', 'minified', 'htmlmin']);
+  grunt.registerTask('default', ['imagemin', 'cssmin', 'responsive_images', 'resize_crop', 'svgmin', 'jsbeautifier', 'jshint', 'minified', 'htmlmin']);
 }; // end module.exports
