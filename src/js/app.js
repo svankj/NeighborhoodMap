@@ -351,8 +351,8 @@ var viewModel = function() {
 			return self.dataList();
 		} else {
 			return ko.utils.arrayFilter(self.dataList(), function(data) {
-				var city = (data.locationCity() !== undefined)?data.locationCity().toLowerCase():"";
-				var filterValue = stringStartsWith(data.name().toLowerCase(), filter) ||
+				var city = (data.locationCity() || "").toLowerCase();
+				var filterValue = data.name().toLowerCase().indexOf(filter)!==-1 ||
 				stringStartsWith(city, filter);
 				var marker = data.marker;
 				if(filterValue)
